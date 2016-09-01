@@ -9,16 +9,13 @@
 #define CMD_PREP	0xC2
 #define CMD_WRITE	0xC3
 
-
-
 typedef struct _PACKET {
-	uint16_t size; // off the whole packet
+	uint16_t size;       // of the whole packet
 	uint16_t cmdType;
 	uint8_t *data;
-}PACKET;
+} PACKET;
 
-
-uint8_t initCmds(uint8_t comPortNb, uint32_t baudrate);
+uint8_t initCmds(const char *comPortId, uint32_t baudrate);
 uint8_t deinitCmds();
 
 uint8_t encData(uint8_t data[], uint16_t dataSize, uint8_t cmdType);

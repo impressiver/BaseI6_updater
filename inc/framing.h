@@ -13,10 +13,10 @@ typedef struct _FRAME {
 	uint8_t *packet;
 }FRAME;
 
-uint8_t initFraming(uint8_t comPortNb, uint32_t baudrate);
+uint8_t initFraming(const char *comPortId, uint32_t baudrate);
 uint8_t deinitFraming();
 
-void printArr(uint8_t array[],uint16_t size);
+void printArr(uint8_t array[], uint16_t size);
 uint16_t genChecksum(FRAME frame, uint16_t size);
 
 uint8_t encPacket(uint8_t packet[], uint16_t size);

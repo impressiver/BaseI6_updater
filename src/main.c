@@ -15,19 +15,30 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-
+#ifdef WIN
 #include <windows.h>
+#else
+#include "types.h"
+#endif  // WIN
+
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#ifdef WIN
 #include <conio.h>
+#endif  /* WIN */
 #include <sys/stat.h>
-
 #include "app.h"
 
-#define DEFAULT_COMPORT 0
+#ifdef WIN
+#define DEFAULT_COMPORT "COM0"
+#else
+#define DEFAULT_COMPORT "/dev/tty.usbserial"
+#endif
 #define DEFAULT_BAUDRATE 115200
+
+#define _DEBUG
 
 // prototypes
 uint8_t empty(void) ;
@@ -43,167 +54,178 @@ uint8_t readPage(uint8_t page[], uint16_t nbytes,FILE* file,uint16_t offset);
 
 // global variables
 
-uint8_t comPortNb = DEFAULT_COMPORT;
+char comPortId[512] = DEFAULT_COMPORT;
 uint32_t baudrate = DEFAULT_BAUDRATE;
 char filePath[512];
-bool usePort = false;			// set to true if com port or baudrate is defined
+bool usePort = false;				// set to true if com port or baudrate is defined
 bool autoDetect = true;
 bool withBtldr = false;			// set to true by -bt option
 bool useCrcPatch = false;		// set to true by -c option
-bool verbose = false;			// set to true by -v option
+bool verbose = false;				// set to true by -v option
 
 int main(int argc, char *argv[]) {
-	
 	uint8_t (*function)(void);	// pointer to the executed command
 	function = printHelp;		// by default: print help and quit 
-	
+
 	// parsing command line options
-	for(int i = 1;i<argc;i++) {
-		if(strcmp(argv[i],"-n")==0) {
-			comPortNb = (uint8_t)atoi(argv[i+1]);
+	for(int i = 1; i<argc; i++) {
+		printf("Arg: %s\r\n", argv[i]);
+
+		if(strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--h") == 0 || strcmp(argv[i], "help") == 0) {
+			function = printHelp;
+		}
+		else if(strcmp(argv[i], "-d") == 0) {
+			strcpy(comPortId, argv[i+1]);
 			usePort = true;
 			autoDetect = false;
 			i++;
 		}
-		else if(strcmp(argv[i],"-b")==0) {
+		else if(strcmp(argv[i], "-b") == 0) {
 			baudrate = (uint32_t)atoi(argv[i+1]);
 			usePort = true;
 			i++;
-		}else if(strcmp(argv[i],"-bt")==0) {
+		}
+		else if(strcmp(argv[i], "-bt") == 0) {
 			withBtldr = true;
 		}
-		else if(strcmp(argv[i],"-c")==0) {
+		else if(strcmp(argv[i], "-c") == 0) {
 			useCrcPatch = true;
 		}
-		else if(strcmp(argv[i],"-v")==0) {
+		else if(strcmp(argv[i], "-p") == 0) {
+			strcpy(filePath, argv[i+1]);
+			i++;
+		}
+		else if(strcmp(argv[i], "-v") == 0) {
 			verbose = true;
 		}
-		else if(strcmp(argv[i],"-p")==0) {
-			strcpy(filePath,argv[i+1]);
-			i++;
+		else if(strcmp(argv[i], "read") == 0) {
+			function = detect;
+			usePort = true;
 		}
-		else if(strcmp(argv[i],"-h")==0 || strcmp(argv[i],"-help")==0 || strcmp(argv[i],"--h")==0) {
+		else if(strcmp(argv[i], "flash") == 0) {
+			function = upload;
+			usePort = true;
+		}
+		else if(strcmp(argv[i], "erase") == 0) {
+			function = erase;
+			usePort = true;
+		}
+		else if(strcmp(argv[i], "reset") == 0) {
+			function = reset;
+			usePort = true;
+		}
+		else {
+			printf("Invalid option: %s. \r\n", argv[i]);
 			function = printHelp;
-		}
-		else if(strcmp(argv[i],"-a")==0) {
-			if(strcmp(argv[i+1],"-d")==0) {
-				function = empty;
-				usePort = true;
-			}
-			else if(strcmp(argv[i+1],"-u")==0) {
-				function = upload;
-				usePort = true;
-			}
-			else if(strcmp(argv[i+1],"-e")==0) {
-				function = erase;
-				usePort = true;
-			}
-			else if(strcmp(argv[i+1],"-r")==0) {
-				function = reset;
-				usePort = true;
-			}
-			else {
-				printf("Invalid -a option, exit. \r\n");
-				return 0;
-			}
-			i++;
+			break;
 		}
 	}
 	
 	if(usePort) {
-		while(openPort()!=0){
-			if(comPortNb >= 15) {
-				if(verbose) {
-					printf("Press ENTER to quit...\r\n");
-					getchar();
-				}
-				return -1;
+		if(openPort() != 0) {
+			printf("Failed to open port %s.\r\n", comPortId);
+			if(verbose) {
+				printf("Press any key to exit...\r\n");
+				getchar();
 			}
-			comPortNb++;
+			return -1;
 		}
 	}
 			
 	// execute selected function
 	(*function)();
 	
-	if(usePort)
-		closePort();
+	// close serial port
+	if(usePort) closePort();
 	
-	// stop execution only in verbose mode
+	// bause execution (verbose mode)
 	if(verbose) {
-		printf("Press ENTER to quit...\r\n");
+		printf("Press any key to exit...\r\n");
 		getchar();
 	}
 	
 	return 0;
 }
+
 uint8_t empty(void) {
 	return 0;
 }
 
 uint8_t openPort(void) {
-	printf("*Try opening COM%d at %d bps:\r\n",comPortNb,baudrate);
-	if(appInit(comPortNb,baudrate)!=0) {
-		printf("*\t\t\tERROR\r\n");
+	printf("Connecting to %s at %d bps...\t", comPortId, baudrate);
+
+	if(appInit(comPortId, baudrate) != 0) {
+		printf("FAIL\r\n");
 		return -1;
 	}
-	printf("*\t\t\tSUCCESS\r\n");
-	if(detect()!=0) {
+
+	printf("OK\r\n");
+
+	if(detect() != 0) {
 		closePort();
 		return -1;
 	}
+
 	return 0;
 }
 
 uint8_t closePort(void) {
-	printf("*Closing COM%d at %d bps:\r\n",comPortNb,baudrate);
-	if(appDeinit()!=0) {
-		printf("*\t\t\tERROR\r\n");
+	printf("Closing port %s...\t", comPortId);
+
+	if(appDeinit() != 0) {
+		printf("FAIL\r\n");
 		return -1;
 	}
-	printf("*\t\t\tSUCCESS\r\n");
+
+	printf("OK\r\n");
 	return 0;
-	
 }
 
 uint8_t printHelp(void){
 	printf("\r\n");
-	printf("____________BASEI6 UPDATER HELP____________\r\n");
-	printf("-h    : print help and quit\r\n");
-	printf("-bt   : if image file contains bootloader\r\n");
-	printf("-c    : check flash image CRC before upload\r\n");
-	printf("-v    : verbose mode (pause at the end)\r\n");
-	printf("-n __ : com port number\r\n");
-	printf("-b __ : com port baudrate\r\n");
-	printf("-p __ : path to flash image\r\n");
-	printf("-a __ : action to perform :\r\n");
-	printf("   -d : detect transmitter\r\n");
-	printf("   -u : upload flash image\r\n");
-	printf("   -r : reset transmitter\r\n");
-	printf("___________________________________________\r\n\r\n");
+	printf("Usage: BaseI6_updater [options] action \r\n\r\n");
+	printf("Actions:\r\n");
+	printf(" read          : detect firmware version\r\n");
+	printf(" flash         : upload firware image\r\n");
+	printf(" erase         : erase transmitter firmware\r\n");
+	printf(" reset         : reset transmitter\r\n");
+	printf("\r\nOptions:\r\n");
+	printf(" -b rate       : com port baudrate\r\n");
+	printf(" -bt           : if image file contains bootloader\r\n");
+	printf(" -c            : check flash image CRC before upload\r\n");
+	printf(" -d (path|com) : serial device path or com port (eg. '/dev/cu.usbserial' or 'COM1')\r\n");
+	printf(" -h            : print help and quit\r\n");
+	printf(" -p path       : path to flash image\r\n");	
+	printf(" -v            : verbose mode (pause at the end)\r\n");
+	printf("\r\n");
 	return 0;
 }
 
 uint8_t detect(void) {
-	printf("*Detecting i6 transmitter:\r\n");
-	if(appDetect()!=0) {
-		printf("*\t\t\tERROR\r\n");
+	printf("Reading i6 firmware...\t");
+
+	if(appDetect() != 0) {
+		printf("FAIL\r\n");
 		return -1;
 	}
-	printf("*\t\t\tSUCCESS\r\n");
+	printf("*OK\r\n");
 	return 0;
 }
 
 uint8_t check(void) {
 	printf("*Checking flash image CRC:\r\n");
 	char cmd[256];
-	if(withBtldr) sprintf(cmd,"tools\\BaseI6_CRC_patcher %s -b",filePath);
-	else sprintf(cmd,"tools\\BaseI6_CRC_patcher %s",filePath);
-	int code = system(cmd);
+	int code = -1;
+	
+	if(withBtldr) sprintf(cmd, "tools\\BaseI6_CRC_patcher %s -b", filePath);
+	else sprintf(cmd, "tools\\BaseI6_CRC_patcher %s", filePath);
+	code = system(cmd);
+
 	if(code==0)
 		printf("*\t\t\tSUCCESS\r\n");
 	else
 		printf("*\t\t\tERROR\r\n");
+
 	return code;
 }
 
@@ -288,13 +310,12 @@ uint8_t upload(void) {
 
 uint8_t readPage(uint8_t page[], uint16_t nbytes,FILE* file,uint16_t offset)
 {
-	fseek(file,offset,0);
-
-    for(int i=0;i<nbytes;i++) {
-        // printf("index : %x\n",(int)ftell(file));
-        page[i]=(uint8_t)fgetc(file);
-    }
-    return 0;
+	fseek(file, offset, 0);
+  for(int i=0;i<nbytes;i++) {
+      // printf("index : %x\n",(int)ftell(file));
+      page[i]=(uint8_t)fgetc(file);
+  }
+  return 0;
 }
 
 

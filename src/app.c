@@ -15,12 +15,10 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-
-
 #include "app.h"
 
-uint8_t appInit(uint8_t comPortNb, uint32_t baudrate) {
-	return initCmds(comPortNb, baudrate);
+uint8_t appInit(const char *comPortId, uint32_t baudrate) {
+	return initCmds(comPortId, baudrate);
 }
 uint8_t appDeinit() {
 	return deinitCmds();
@@ -28,9 +26,13 @@ uint8_t appDeinit() {
 
 /*	reset the tx	*/
 uint8_t appReset() {
-	uint8_t data[] = {0x00}; //reset
-	encData(data,sizeof(data),CMD_RESET);
+	uint8_t data[] = { 0x00 }; //reset
+	encData(data, sizeof(data), CMD_RESET);
 	return 0;
+}
+
+void appList() {
+
 }
 
 /*	detect the tx	*/
@@ -38,17 +40,19 @@ uint8_t appDetect() {
 	uint8_t code = 0xFF;
 	//int i = 0;
 	//while(code!=0 && i<10) {
-		printf("*\tDetection ...\t");
+		printf("*\tDetecting firmware...\t");
 		uint8_t data[] = {}; // detect
-		encData(data,sizeof(data),CMD_DETECT);
 		
 		// receiving ack
-		uint8_t *receivedData=malloc(256);
+		uint8_t *receivedData = malloc(256);
 		uint16_t dataSize;
 		uint8_t cmdType;
-		code=decData(receivedData,&dataSize,&cmdType);
+
+		encData(data, sizeof(data), CMD_DETECT);
+		code = decData(receivedData, &dataSize, &cmdType);
+
 		if(code==0 && cmdType==CMD_DETECT) {
-			printf("Firmware version detected: %d.%d\r\n",receivedData[2],receivedData[0]);
+			printf("Firmware version: %d.%d\r\n", receivedData[2], receivedData[0]);
 		}
 		else {
 			switch((char)code){
@@ -89,10 +93,12 @@ uint8_t appPrepareBlock(uint16_t offset) {
 	while(code!=0 || cmdType!=CMD_PREP) {
 		//sending the cmd
 		// printf("*\tPreparing 1KB block at offset 0x%X ...\t",offset);
-		encData(data,sizeof(data),CMD_PREP);
+		encData(data, sizeof(data), CMD_PREP);
+
 		//receiving
 		code = decData(receivedData,&dataSize,&cmdType);
-		switch((char)code){
+
+		switch((char)code) {
 			case 0:
 				if(cmdType != CMD_PREP)
 					printf("[FAIL] bad command type received\r\n");
@@ -119,7 +125,6 @@ uint8_t appPrepareBlock(uint16_t offset) {
 }
 
 uint8_t appWritePage(uint8_t *data,uint16_t size, uint32_t offset) {
-	
 	uint8_t buf[size+6];
 	// receiving ack
 	uint8_t *receivedData=malloc(256);
@@ -133,15 +138,18 @@ uint8_t appWritePage(uint8_t *data,uint16_t size, uint32_t offset) {
 	buf[3]=(offset>>24) & 0xFF;
 	buf[4]=size & 0xFF;
 	buf[5]=(size>>8) & 0xFF;
+
 	memcpy(buf+6,data,size);
 	
 	while(code!=0 || cmdType!=CMD_WRITE) {
 		//sending the cmd
 		// printf("*\tWriting 0x%X bytes at offset 0x%X ...\t",size,offset);
-		encData(buf,sizeof(buf),CMD_WRITE);
+		encData(buf, sizeof(buf), CMD_WRITE);
+		
 		//receiving
-		code = decData(receivedData,&dataSize,&cmdType);
-		switch((char)code){
+		code = decData(receivedData, &dataSize, &cmdType);
+
+		switch((char)code) {
 			case 0:
 				if(cmdType != CMD_WRITE)
 					printf("[FAIL] bad command type received\r\n");

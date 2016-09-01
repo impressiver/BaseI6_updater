@@ -1,4 +1,4 @@
-// Copyright Thomas Herpoel 2016
+// Copyright Ian White 2016
 //
 // This file is part of BaseI6_updater
 //
@@ -15,159 +15,145 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+#include <libserialport.h>
 #include "serial.h"
-#undef _DEBUG
 
+// #undef _DEBUG
 
-static COMMTIMEOUTS g_cto = {
-    MAX_WAIT_READ,  /* ReadIntervalTimeOut          */
-    0,              /* ReadTotalTimeOutMultiplier   */
-    MAX_WAIT_READ,  /* ReadTotalTimeOutConstant     */
-    0,              /* WriteTotalTimeOutMultiplier  */
-    0               /* WriteTotalTimeOutConstant    */
-};
+uint8_t openCom(const char *comPortId, DWORD baudrate, HANDLE *hdlr) {
+	struct sp_port *port;
 
-static DCB g_dcb = {
-    sizeof(DCB),        /* DCBlength            */
-    115200,             /* BaudRate             */
-    TRUE,               /* fBinary              */
-    FALSE,              /* fParity              */
-    FALSE,              /* fOutxCtsFlow         */
-    FALSE,              /* fOutxDsrFlow         */
-    DTR_CONTROL_DISABLE, /* fDtrControl          */
-    FALSE,              /* fDsrSensitivity      */
-    FALSE,              /* fTXContinueOnXoff    */
-    FALSE,              /* fOutX                */
-    FALSE,              /* fInX                 */
-    FALSE,              /* fErrorChar           */
-    FALSE,              /* fNull                */
-    RTS_CONTROL_DISABLE, /* fRtsControl          */
-    FALSE,              /* fAbortOnError        */
-    0,                  /* fDummy2              */
-    0,                  /* wReserved            */
-    0x100,              /* XonLim               */
-    0x100,              /* XoffLim              */
-    8,                  /* ByteSize             */
-    NOPARITY,           /* Parity               */
-    ONESTOPBIT,         /* StopBits             */
-    0x11,               /* XonChar              */
-    0x13,               /* XoffChar             */
-    '?',                /* ErrorChar            */
-    0x1A,               /* EofChar              */
-    0x10                /* EvtChar              */
-};
+	#ifdef _DEBUG
+	printf("[DEBUG] Connecting to %s at %d bauds : " , comPortId, (int)baudrate);
+	#endif
 
-uint8_t openCom(uint32_t comPortNb,DWORD baudrate,HANDLE *hdlr) {
-
-    #ifdef _DEBUG
-    printf("[DEBUG] Connecting to COM%d at %d bauds : " ,comPortNb,(int)baudrate);
-    #endif
-
-    char comPortName[16];
-
-    sprintf(comPortName, "COM%d", comPortNb);
+	if (sp_get_port_by_name(comPortId, &port) == SP_OK) {
+		#ifdef _DEBUG
+		printf("Port: %s\n", sp_get_port_name(port));
+		#endif
+	} else {
+		#ifdef _DEBUG
+		printf("ERROR - unable to get port (%s)\r\n", comPortId);
+		#endif
+		return -1;
+	}
 	
-    *hdlr = CreateFile(comPortName,
-						GENERIC_READ|GENERIC_WRITE,
-						0,
-						NULL,
-                        OPEN_EXISTING,
-						//FILE_ATTRIBUTE_NORMAL,
-						0,
-						NULL);
-	
-    if(*hdlr == INVALID_HANDLE_VALUE)
-    {
-        #ifdef _DEBUG
-        printf("ERROR - invalid handle (COM%d)\r\n", comPortNb);
-        #endif
-        return GetLastError(); // invalid handle error
-    }
+	if(sp_set_baudrate(port, baudrate) == SP_OK) {
+		#ifdef _DEBUG
+		printf("Baud: %d\n", baudrate);
+		#endif
+	} else {
+		#ifdef _DEBUG
+		printf("ERROR - unable to set baud rate to %d (%s)\r\n", baudrate, comPortId);
+		#endif
+		return -2;
+	}
 
-    // size of RX and TX buffers
-    SetupComm(*hdlr, RX_SIZE, TX_SIZE);
+	if(sp_open(port, SP_MODE_READ_WRITE) == SP_OK) {
+		#ifdef _DEBUG
+		printf("Connected to %s\n", comPortId);
+		#endif
+	} else {
+		#ifdef _DEBUG
+		printf("ERROR - unable to open port (%s)\r\n", comPortId);
+		#endif
+		return -3;
+	}
 
-    // com port config
-    g_dcb.BaudRate=baudrate;
-    if(!SetCommTimeouts(*hdlr, &g_cto) || !SetCommState(*hdlr, &g_dcb))
-    {
-        #ifdef _DEBUG
-        printf("ERROR - setting timeouts (COM%d)\r\n", comPortNb);
-        #endif
-        CloseHandle(*hdlr);
-        return -2;	// setting timeouts error
-    }
+	// if(!SetCommTimeouts(*hdlr, &g_cto) || !SetCommState(*hdlr, &g_dcb)) {
+	// 	#ifdef _DEBUG
+	// 	printf("ERROR - unable to set timeouts (%s)\r\n", comPortId);
+	// 	#endif
 
-    // empty the buffers
-    PurgeComm(*hdlr, PURGE_TXCLEAR|PURGE_RXCLEAR|PURGE_TXABORT|PURGE_RXABORT);
+	// 	CloseHandle(*hdlr);
+	// 	return -2;  // setting timeouts error
+	// }
 
-    #ifdef _DEBUG
-    printf("OK\r\n");
-    #endif
+	// empty the buffers
+	if(sp_flush(port, SP_BUF_BOTH) != SP_OK) {
+		#ifdef _DEBUG
+		printf("ERROR - flushing buffers (%s)\r\n", comPortId);
+		#endif
+		sp_close(port);
+		return -4;
+	}
 
-    return 0;
+	hdlr = (HANDLE)port;
+
+	#ifdef _DEBUG
+	printf("OK\r\n");
+	#endif
+
+	return 0;
 }
+
 uint8_t closeCom(HANDLE *hdlr) {
-    CloseHandle(*hdlr);
-    return 0;
+	if(sp_close((struct sp_port*)hdlr) != SP_OK) {
+		#ifdef _DEBUG
+		printf("ERROR - unable to close port\r\n");
+		#endif
+		return 1;
+	}
+	return 0;
 }
+
 uint8_t flushCom(HANDLE *hdlr) {
 	// empty the buffers
-    PurgeComm(*hdlr, PURGE_TXCLEAR|PURGE_RXCLEAR|PURGE_TXABORT|PURGE_RXABORT);
+	if(sp_flush((struct sp_port*)hdlr, SP_BUF_BOTH) != SP_OK) {
+		#ifdef _DEBUG
+		printf("ERROR - flushing buffers (%s)\r\n", comPortId);
+		#endif
+		return -1;
+	}
 	return 0;
 }
 
 uint8_t sendb(uint8_t byte, HANDLE *hdlr) {
-    PDWORD nBytesWritten=0;
-    if(!WriteFile(*hdlr, &byte, 1, nBytesWritten, NULL))
-    {
-        return -1;	// error
-    }
+	if(!sp_blocking_write((struct sp_port*)hdlr, &byte, 1, MAX_WAIT_WRITE_MS)) {
+			return -1;  // error
+	}
 	else {
 		//printf("byte sent:\t0x%X\r\n",byte);
-		return 0;	// ok
+		return 0; // ok
 	}
 }
+
 uint8_t sends(uint16_t shrt, HANDLE *hdlr) {
-	sendb((uint8_t)(shrt & 0xFF),hdlr);
-	sendb((uint8_t)((shrt>>8) & 0xFF),hdlr);
+	sendb((uint8_t)(shrt & 0xFF), hdlr);
+	sendb((uint8_t)((shrt>>8) & 0xFF), hdlr);
 	return 0;
 }
+
 uint8_t sendi(uint32_t val, HANDLE *hdlr) {
-	sendb((uint8_t)(val & 0xFF),hdlr);
-	sendb((uint8_t)((val>>8) & 0xFF),hdlr);
-	sendb((uint8_t)((val>>16) & 0xFF),hdlr);
-	sendb((uint8_t)((val>>24) & 0xFF),hdlr);
+	sendb((uint8_t)(val & 0xFF), hdlr);
+	sendb((uint8_t)((val>>8) & 0xFF), hdlr);
+	sendb((uint8_t)((val>>16) & 0xFF), hdlr);
+	sendb((uint8_t)((val>>24) & 0xFF), hdlr);
 	return 0;
 }
 
 uint8_t senda(uint8_t *array, uint16_t size, HANDLE *hdlr) {
-	PDWORD nBytesWritten=0;
-    if(!WriteFile(*hdlr, array, size, nBytesWritten, NULL)) {
-        return -1;	// error
-    }
-	else {
-		return 0;	// ok
+	if(sp_blocking_write((struct sp_port*)hdlr, array, size, MAX_WAIT_WRITE_MS) != SP_OK) {
+			return -1;  // error
 	}
+	else return 0; // ok
 }
 
-uint8_t readb(uint8_t *byte,HANDLE *hdlr) {
-    PDWORD nBytesRead=0;
-    if(!ReadFile(*hdlr, byte, 1, nBytesRead, NULL)) {
-		return -1;	// error
+uint8_t readb(uint8_t *byte, HANDLE *hdlr) {
+	if(sp_blocking_read((struct sp_port*)hdlr, byte, 1, MAX_WAIT_READ_MS) != SP_OK) {
+		return -1;  // error
 	}
-	else
-		return 0;	// ok
+	else return 0; // ok
 }
+
 uint8_t reads(uint16_t *shrt, HANDLE *hdlr) {
 	*shrt = 0x0000;
 	uint8_t byte;
-	if(readb(&byte,hdlr)!=0)
-		return -1;
+	if(readb(&byte, hdlr) != 0) return -1;
+	
 	*shrt += byte;
-	if(readb(&byte,hdlr)!=0)
-		return -1;
-	*shrt += (uint16_t)byte<<8;
+	if(readb(&byte, hdlr) != 0) return -1;
+	
+	*shrt += (uint16_t)byte << 8;
 	return 0;
 }
-

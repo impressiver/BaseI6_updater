@@ -26,16 +26,12 @@ bin\1.2\baseI6_updater -a -u -p `path to firmware image file here` -c -v
 | Option        | Parameter     | Description  |
 |:-------------:|:-------------:| ------------ |
 | `-h` |  | print help and quit  |
+| `-v` |  | verbose mode (pause at the end)  |
 | `-bt` |  | if image file contains bootloader |
 | `-c` |  | check flash image CRC before upload  |
-| `-v` |  | verbose mode (pause at the end)  |
-| `-n` | `number` | com port number |
-| `-b` | `baudrate` | com port baudrate |
-| `-p` | `path` | path to flash image |
-| `-a` | `___` | action to perform : |
-| `-a` | `-d` | detect transmitter |
-| `-a` | `-u` | upload flash image |
-| `-a` | `-r` | reset transmitter |
+| `-d` | `device` | serial device path |
+| `-b` | `baudrate` | serial port baudrate |
+| `-p` | `path` | path to firmware file |
 
 
 ## Change Log

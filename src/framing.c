@@ -19,9 +19,10 @@
 
 static HANDLE hdlr = NULL;
 
-uint8_t initFraming(uint8_t comPortNb, uint32_t baudrate) {
-	return openCom(comPortNb,(DWORD)baudrate,&hdlr);
+uint8_t initFraming(const char *comPortId, uint32_t baudrate) {
+	return openCom(comPortId, (DWORD)baudrate, &hdlr);
 }
+
 uint8_t deinitFraming() {
 	closeCom(&hdlr);
 	return 0;
@@ -41,7 +42,6 @@ uint16_t genChecksum(FRAME frame, uint16_t size) {
 }
 
 uint8_t encPacket(uint8_t *packet, uint16_t size) {
-
 	FRAME frame;
 	
 	frame.size = size + 4;
@@ -56,6 +56,7 @@ uint8_t encPacket(uint8_t *packet, uint16_t size) {
 uint8_t decPacket(uint8_t *pkt, uint16_t *size) {
 	FRAME frame;
 	uint8_t code = readFrame(&frame);
+
 	if(code !=0 ) {
 		*size=0;
 		return code;
@@ -92,12 +93,13 @@ uint8_t sendFrame(FRAME frame) {
 // return 0 if frame arrived, -1 if timeout
 uint8_t readFrame(FRAME *frame) {
 	uint8_t byte = 0x00;
-	readb(&byte,&hdlr);
-	
 	clock_t t1,t2;
+
+	readb(&byte, &hdlr);
+	
 	t1 = clock();
 	while(byte != 0x55) {
-		readb(&byte,&hdlr);
+		readb(&byte, &hdlr);
 		t2 = clock();
 		if((double)((t2 - t1)*1000.0/CLOCKS_PER_SEC) >=(double)TIMEOUT) {
 			flushCom(&hdlr);
@@ -111,7 +113,7 @@ uint8_t readFrame(FRAME *frame) {
 	(*frame).packet = malloc((*frame).size-5);
 	
 	for(int i=0;i<(*frame).size-5;i++) {
-		readb(((*frame).packet+i),&hdlr);
+		readb(((*frame).packet+i), &hdlr);
 	}
 	reads(&((*frame).checksum),&hdlr);
 	
@@ -126,7 +128,7 @@ uint8_t readFrame(FRAME *frame) {
 
 void printArr(uint8_t array[],uint16_t size) {
 	for(int i = 0;i<size;i++) {
-		printf("0x%x ",array[i]);
+		printf("0x%x ", array[i]);
 	}
 }
 

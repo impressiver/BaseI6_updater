@@ -15,22 +15,23 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-
-
+#ifdef WIN
 #include <windows.h>
+#else
+#include "types.h"
+#endif  // WIN
+
 #include <stdio.h>
 #include <stdlib.h>
-#include <conio.h>
-#include <stdint.h>
+#include <libserialport.h>
 
 #ifndef _SERIAL_H
 #define _SERIAL_H
 
-#define RX_SIZE         4096    /* taille tampon d'entrée  */
-#define TX_SIZE         4096    /* taille tampon de sortie */
-#define MAX_WAIT_READ   100    /* temps max d'attente pour lecture (en ms) */
+#define MAX_WAIT_READ_MS   100
+#define MAX_WAIT_WRITE_MS   100
 
-uint8_t openCom(uint32_t comPortNb,DWORD baudrate,HANDLE *hdlr);
+uint8_t openCom(const char *comPortId, DWORD baudrate, HANDLE *hdlr);
 uint8_t closeCom(HANDLE *hdlr);
 uint8_t flushCom(HANDLE *hdlr);
 
@@ -41,7 +42,6 @@ uint8_t senda(uint8_t *array, uint16_t size, HANDLE *hdlr);
 
 uint8_t readb(uint8_t *byte,HANDLE *hdlr);
 uint8_t reads(uint16_t *shrt, HANDLE *hdlr);
-
 
 #endif // _SERIAL_H
 
